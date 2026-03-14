@@ -1,0 +1,59 @@
+﻿services:
+  mongo:
+    image: mongo:7
+    container_name: vlsi-lab-mongo
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mongo-init-replica:
+    image: mongo:7
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        mongosh --host mongo:27017 --eval "try { rs.status() } catch (err) { rs.initiate({_id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }]}) }"
+
+  backend:
+    build:
+      context: ./backend
+    container_name: vlsi-lab-backend
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mongo-init-replica:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      MONGO_URI: mongodb://mongo:27017/vlsi_lab_register?replicaSet=rs0
+      JWT_SECRET: change-this-jwt-secret
+      JWT_EXPIRES_IN: 12h
+      CLIENT_URL: http://localhost:8080
+      CREATOR_REGISTER_NUMBER: CREATOR001
+      CREATOR_PASSWORD: Creator@123
+      ADMIN_REGISTER_NUMBER: ADMIN001
+      ADMIN_PASSWORD: Admin@123
+    ports:
+      - "4000:4000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:4000/api
+        VITE_SOCKET_URL: http://localhost:4000
+    container_name: vlsi-lab-frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"

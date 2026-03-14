@@ -1,0 +1,8 @@
+﻿{
+  "collection": "blocked_systems",
+  "fields": {
+    "seat_id": "String, required, unique",
+    "reason": "String, required",
+    "blocked_at": "Date, default now"
+  }
+}

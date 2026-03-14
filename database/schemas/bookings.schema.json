@@ -1,0 +1,21 @@
+﻿{
+  "collection": "bookings",
+  "fields": {
+    "seat_id": "String, required, indexed",
+    "row_id": "String, required, indexed",
+    "register_number": "String, required, indexed",
+    "student_name": "String, required",
+    "entry_time": "Date, required",
+    "exit_time": "Date, required",
+    "client_ip": "String",
+    "timestamp": "Date, default now",
+    "status": "Enum(active|cancelled|completed), default active",
+    "verified_at": "Date",
+    "cancelled_at": "Date",
+    "is_simulation": "Boolean, default false"
+  },
+  "indexes": [
+    "unique partial index on seat_id when status=active",
+    "unique partial index on register_number when status=active"
+  ]
+}

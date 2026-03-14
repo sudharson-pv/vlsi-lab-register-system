@@ -1,0 +1,12 @@
+﻿{
+  "collection": "app_settings",
+  "fields": {
+    "key": "String, required, unique",
+    "value": "Mixed, required",
+    "description": "String"
+  },
+  "known_keys": [
+    "maintenance_mode",
+    "female_seat_protection"
+  ]
+}

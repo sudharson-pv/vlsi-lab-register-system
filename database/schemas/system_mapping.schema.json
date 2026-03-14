@@ -1,0 +1,8 @@
+﻿{
+  "collection": "system_mapping",
+  "fields": {
+    "seat_label": "String, required, unique",
+    "system_id": "String, required",
+    "ip_address": "String, required, unique"
+  }
+}

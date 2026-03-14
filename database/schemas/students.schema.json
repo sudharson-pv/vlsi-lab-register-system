@@ -1,0 +1,13 @@
+﻿{
+  "collection": "students",
+  "fields": {
+    "register_number": "String, required, unique, uppercase",
+    "password_hash": "String, required",
+    "student_name": "String, required",
+    "year_of_study": "Number, required",
+    "gender": "Enum(male|female), required",
+    "role": "Enum(student|admin|creator), default student",
+    "is_active": "Boolean, default true",
+    "created_at": "Date, default now"
+  }
+}

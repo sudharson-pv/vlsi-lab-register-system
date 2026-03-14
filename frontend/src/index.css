@@ -1,0 +1,68 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply min-h-screen bg-graphite-950 font-sans text-slate-100 antialiased;
+  background-image:
+    radial-gradient(circle at top left, rgba(34, 211, 238, 0.16), transparent 28%),
+    radial-gradient(circle at top right, rgba(245, 158, 11, 0.14), transparent 26%),
+    linear-gradient(135deg, #081018 0%, #101a28 44%, #182235 100%);
+}
+
+#root {
+  @apply min-h-screen;
+}
+
+.panel-surface {
+  @apply rounded-3xl border border-white/10 bg-white/5 shadow-panel backdrop-blur;
+}
+
+.panel-muted {
+  @apply rounded-2xl border border-white/10 bg-black/20 backdrop-blur;
+}
+
+.grid-pattern {
+  background-image: theme("backgroundImage.grid");
+  background-size: 28px 28px;
+}
+
+.input-base {
+  @apply w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-cyanlab-400 focus:ring-2 focus:ring-cyanlab-400/20;
+}
+
+.btn-primary {
+  @apply rounded-2xl bg-cyanlab-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyanlab-300 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.btn-secondary {
+  @apply rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.btn-danger {
+  @apply rounded-2xl bg-rose-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.badge {
+  @apply inline-flex items-center rounded-full border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em];
+}
+
+.table-shell {
+  @apply overflow-hidden rounded-2xl border border-white/10 bg-black/20;
+}
+
+.table-shell table {
+  @apply min-w-full divide-y divide-white/10 text-sm;
+}
+
+.table-shell th {
+  @apply bg-white/5 px-4 py-3 text-left font-medium text-slate-300;
+}
+
+.table-shell td {
+  @apply px-4 py-3 text-slate-100;
+}
