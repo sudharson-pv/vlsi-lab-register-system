@@ -31,10 +31,12 @@ app.use(errorHandler);
 
 initializeSocket(server);
 
+const PORT = process.env.PORT || 4000;
+
 connectDB()
   .then(() => {
-    server.listen(env.port, () => {
-      console.log(`Server listening on port ${env.port}`);
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
     });
   })
   .catch((error) => {
