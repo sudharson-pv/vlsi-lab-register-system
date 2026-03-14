@@ -1,4 +1,4 @@
-﻿import { Booking } from "../models/Booking.js";
+import { Booking } from "../models/Booking.js";
 import { BlockedSystem } from "../models/BlockedSystem.js";
 import { SystemMapping } from "../models/SystemMapping.js";
 import { AppSetting } from "../models/AppSetting.js";
@@ -13,15 +13,20 @@ import {
 } from "../utils/seats.js";
 import { getIo } from "../socket/index.js";
 
-const withSession = (query, session) => {
-  if (session) {
-    query.session(session);
-  }
+const withSession = (query, _session) => query;
 
-  return query;
-};
+const getDurationMinutes = (entryTime, exitTime) =>
+  Math.max(
+    0,
+    Math.round(
+      (new Date(exitTime).getTime() - new Date(entryTime).getTime()) / 60000,
+    ),
+  );
 
-export const releaseExpiredBookings = async (session = null) => {
+const sortByValueDescThenMinutes = (left, right) =>
+  right.bookings - left.bookings || right.total_minutes - left.total_minutes;
+
+export const releaseExpiredBookings = async (_session = null) => {
   await Booking.updateMany(
     {
       status: "active",
@@ -32,7 +37,6 @@ export const releaseExpiredBookings = async (session = null) => {
         status: "completed",
       },
     },
-    session ? { session } : undefined,
   );
 };
 
@@ -57,7 +61,9 @@ const getRowReservations = async (
     return [];
   }
 
-  const registerNumbers = [...new Set(activeBookings.map((booking) => booking.register_number))];
+  const registerNumbers = [
+    ...new Set(activeBookings.map((booking) => booking.register_number)),
+  ];
   const studentQuery = Student.find({
     register_number: { $in: registerNumbers },
     gender: "female",
@@ -108,21 +114,27 @@ const getRowReservations = async (
 
   return [...reservations.values()].sort(
     (left, right) =>
-      left.section.localeCompare(right.section) || left.row_number - right.row_number,
+      left.section.localeCompare(right.section) ||
+      left.row_number - right.row_number,
   );
 };
 
 export const getSeatStatusPayload = async () => {
   await releaseExpiredBookings();
 
-  const [activeBookings, blockedSystems, mappings, maintenanceMode, femaleSeatProtectionEnabled] =
-    await Promise.all([
-      Booking.find({ status: "active" }).lean(),
-      BlockedSystem.find({}).lean(),
-      SystemMapping.find({}).lean(),
-      getMaintenanceMode(),
-      getFemaleSeatProtectionEnabled(),
-    ]);
+  const [
+    activeBookings,
+    blockedSystems,
+    mappings,
+    maintenanceMode,
+    femaleSeatProtectionEnabled,
+  ] = await Promise.all([
+    Booking.find({ status: "active" }).lean(),
+    BlockedSystem.find({}).lean(),
+    SystemMapping.find({}).lean(),
+    getMaintenanceMode(),
+    getFemaleSeatProtectionEnabled(),
+  ]);
 
   const rowReservations = await getRowReservations(
     activeBookings,
@@ -211,7 +223,7 @@ export const getSeatStatusPayload = async () => {
 export const getStudentBookingsPayload = async (registerNumber) => {
   await releaseExpiredBookings();
 
-  const [currentBooking, bookingHistory, usageCalendar] = await Promise.all([
+  const [currentBooking, bookingHistory, usageBookings] = await Promise.all([
     Booking.findOne({
       register_number: registerNumber,
       status: "active",
@@ -226,55 +238,39 @@ export const getStudentBookingsPayload = async (registerNumber) => {
       .sort({ timestamp: -1 })
       .limit(25)
       .lean(),
-    Booking.aggregate([
-      {
-        $match: {
-          register_number: registerNumber,
-          status: { $in: ["active", "completed"] },
-          is_simulation: { $ne: true },
-        },
-      },
-      {
-        $project: {
-          booking_day: {
-            $dateToString: { format: "%Y-%m-%d", date: "$entry_time" },
-          },
-          duration_minutes: {
-            $round: [
-              {
-                $divide: [{ $subtract: ["$exit_time", "$entry_time"] }, 60000],
-              },
-              0,
-            ],
-          },
-        },
-      },
-      {
-        $group: {
-          _id: "$booking_day",
-          total_minutes: { $sum: "$duration_minutes" },
-          sessions: { $sum: 1 },
-        },
-      },
-      { $sort: { _id: 1 } },
-    ]),
+    Booking.find({
+      register_number: registerNumber,
+      status: { $in: ["active", "completed"] },
+      is_simulation: { $ne: true },
+    }).lean(),
   ]);
+
+  const usageMap = new Map();
+
+  usageBookings.forEach((booking) => {
+    const day = String(booking.entry_time).slice(0, 10);
+    const durationMinutes = getDurationMinutes(booking.entry_time, booking.exit_time);
+    const current = usageMap.get(day) || { date: day, total_minutes: 0, sessions: 0 };
+    current.total_minutes += durationMinutes;
+    current.sessions += 1;
+    usageMap.set(day, current);
+  });
+
+  const usageCalendar = [...usageMap.values()].sort((left, right) =>
+    left.date.localeCompare(right.date),
+  );
 
   return {
     current_booking: currentBooking,
     booking_history: bookingHistory,
-    usage_calendar: usageCalendar.map((entry) => ({
-      date: entry._id,
-      total_minutes: entry.total_minutes,
-      sessions: entry.sessions,
-    })),
+    usage_calendar: usageCalendar,
   };
 };
 
 export const getAdminDashboardPayload = async () => {
   await releaseExpiredBookings();
 
-  const [activeBookings, blockedSystems, maintenanceMode, seatStatus, stats] =
+  const [activeBookings, blockedSystems, maintenanceMode, seatStatus, analyticsBookings] =
     await Promise.all([
       Booking.find({ status: "active", is_simulation: false })
         .sort({ entry_time: 1 })
@@ -282,121 +278,10 @@ export const getAdminDashboardPayload = async () => {
       BlockedSystem.find({}).sort({ seat_id: 1 }).lean(),
       getMaintenanceMode(),
       getSeatStatusPayload(),
-      Promise.all([
-        Booking.aggregate([
-          {
-            $match: {
-              status: { $in: ["active", "completed"] },
-              is_simulation: { $ne: true },
-            },
-          },
-          {
-            $project: {
-              duration_minutes: {
-                $round: [
-                  {
-                    $divide: [
-                      { $subtract: ["$exit_time", "$entry_time"] },
-                      60000,
-                    ],
-                  },
-                  0,
-                ],
-              },
-            },
-          },
-          {
-            $group: {
-              _id: null,
-              total_minutes: { $sum: "$duration_minutes" },
-              total_sessions: { $sum: 1 },
-            },
-          },
-        ]),
-        Booking.aggregate([
-          {
-            $match: {
-              status: { $in: ["active", "completed"] },
-              is_simulation: { $ne: true },
-            },
-          },
-          {
-            $group: {
-              _id: { $hour: "$entry_time" },
-              bookings: { $sum: 1 },
-            },
-          },
-          { $sort: { _id: 1 } },
-        ]),
-        Booking.aggregate([
-          {
-            $match: {
-              status: { $in: ["active", "completed"] },
-              is_simulation: { $ne: true },
-            },
-          },
-          {
-            $project: {
-              seat_id: 1,
-              duration_minutes: {
-                $round: [
-                  {
-                    $divide: [
-                      { $subtract: ["$exit_time", "$entry_time"] },
-                      60000,
-                    ],
-                  },
-                  0,
-                ],
-              },
-            },
-          },
-          {
-            $group: {
-              _id: "$seat_id",
-              bookings: { $sum: 1 },
-              total_minutes: { $sum: "$duration_minutes" },
-            },
-          },
-          { $sort: { bookings: -1, total_minutes: -1 } },
-          { $limit: 8 },
-        ]),
-        Booking.aggregate([
-          {
-            $match: {
-              status: { $in: ["active", "completed"] },
-              is_simulation: { $ne: true },
-            },
-          },
-          {
-            $project: {
-              register_number: 1,
-              student_name: 1,
-              duration_minutes: {
-                $round: [
-                  {
-                    $divide: [
-                      { $subtract: ["$exit_time", "$entry_time"] },
-                      60000,
-                    ],
-                  },
-                  0,
-                ],
-              },
-            },
-          },
-          {
-            $group: {
-              _id: "$register_number",
-              student_name: { $last: "$student_name" },
-              bookings: { $sum: 1 },
-              total_minutes: { $sum: "$duration_minutes" },
-            },
-          },
-          { $sort: { bookings: -1, total_minutes: -1 } },
-          { $limit: 10 },
-        ]),
-      ]),
+      Booking.find({
+        status: { $in: ["active", "completed"] },
+        is_simulation: { $ne: true },
+      }).lean(),
     ]);
 
   const mappings = await SystemMapping.find({}).lean();
@@ -404,10 +289,59 @@ export const getAdminDashboardPayload = async () => {
     mappings.map((mapping) => [mapping.seat_label, mapping]),
   );
 
+  let totalUsageMinutes = 0;
+  let totalSessions = 0;
+  const peakHoursMap = new Map();
+  const systemUsageMap = new Map();
+  const studentUsageMap = new Map();
+
+  analyticsBookings.forEach((booking) => {
+    const durationMinutes = getDurationMinutes(booking.entry_time, booking.exit_time);
+    totalUsageMinutes += durationMinutes;
+    totalSessions += 1;
+
+    const hour = new Date(booking.entry_time).getHours();
+    peakHoursMap.set(hour, (peakHoursMap.get(hour) || 0) + 1);
+
+    const systemEntry = systemUsageMap.get(booking.seat_id) || {
+      seat_id: booking.seat_id,
+      bookings: 0,
+      total_minutes: 0,
+    };
+    systemEntry.bookings += 1;
+    systemEntry.total_minutes += durationMinutes;
+    systemUsageMap.set(booking.seat_id, systemEntry);
+
+    const studentEntry = studentUsageMap.get(booking.register_number) || {
+      register_number: booking.register_number,
+      student_name: booking.student_name,
+      bookings: 0,
+      total_minutes: 0,
+    };
+    studentEntry.student_name = booking.student_name || studentEntry.student_name;
+    studentEntry.bookings += 1;
+    studentEntry.total_minutes += durationMinutes;
+    studentUsageMap.set(booking.register_number, studentEntry);
+  });
+
+  const peakHours = [...peakHoursMap.entries()]
+    .map(([hour, bookings]) => ({
+      hour: Number(hour),
+      bookings,
+    }))
+    .sort((left, right) => left.hour - right.hour);
+
+  const mostUsedSystems = [...systemUsageMap.values()]
+    .sort(sortByValueDescThenMinutes)
+    .slice(0, 8);
+
+  const studentUsageFrequency = [...studentUsageMap.values()]
+    .sort(sortByValueDescThenMinutes)
+    .slice(0, 10);
+
   return {
     maintenance_mode: maintenanceMode,
-    female_seat_protection_enabled:
-      seatStatus.female_seat_protection_enabled,
+    female_seat_protection_enabled: seatStatus.female_seat_protection_enabled,
     row_reservations: seatStatus.row_reservations,
     seat_summary: seatStatus.summary,
     blocked_systems: blockedSystems,
@@ -415,11 +349,7 @@ export const getAdminDashboardPayload = async () => {
       const mapping = mappingMap.get(booking.seat_id);
       const duration_minutes = Math.max(
         1,
-        Math.round(
-          (new Date(booking.exit_time).getTime() -
-            new Date(booking.entry_time).getTime()) /
-            60000,
-        ),
+        getDurationMinutes(booking.entry_time, booking.exit_time),
       );
 
       return {
@@ -430,23 +360,11 @@ export const getAdminDashboardPayload = async () => {
       };
     }),
     analytics: {
-      total_usage_minutes: stats[0][0]?.total_minutes || 0,
-      total_sessions: stats[0][0]?.total_sessions || 0,
-      peak_hours: stats[1].map((entry) => ({
-        hour: entry._id,
-        bookings: entry.bookings,
-      })),
-      most_used_systems: stats[2].map((entry) => ({
-        seat_id: entry._id,
-        bookings: entry.bookings,
-        total_minutes: entry.total_minutes,
-      })),
-      student_usage_frequency: stats[3].map((entry) => ({
-        register_number: entry._id,
-        student_name: entry.student_name,
-        bookings: entry.bookings,
-        total_minutes: entry.total_minutes,
-      })),
+      total_usage_minutes: totalUsageMinutes,
+      total_sessions: totalSessions,
+      peak_hours: peakHours,
+      most_used_systems: mostUsedSystems,
+      student_usage_frequency: studentUsageFrequency,
     },
   };
 };

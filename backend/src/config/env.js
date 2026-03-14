@@ -40,6 +40,7 @@ const clientUrls = expandLoopbackOrigins(rawClientUrls);
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: Number(process.env.PORT || 4000),
+  sqlitePath: process.env.SQLITE_PATH || "",
   mongoUri:
     process.env.MONGO_URI || "mongodb://localhost:27017/vlsi_lab_register",
   jwtSecret: process.env.JWT_SECRET || "change-this-jwt-secret",

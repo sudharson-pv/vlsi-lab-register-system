@@ -1,6 +1,5 @@
-﻿import bcrypt from "bcryptjs";
-import mongoose from "mongoose";
-import { connectDB } from "../config/db.js";
+import bcrypt from "bcryptjs";
+import { connectDB, disconnectDB } from "../config/db.js";
 import { env } from "../config/env.js";
 import { Student } from "../models/Student.js";
 import { SystemMapping } from "../models/SystemMapping.js";
@@ -114,7 +113,7 @@ const run = async () => {
     console.error("Seeding failed:", error);
     process.exitCode = 1;
   } finally {
-    await mongoose.disconnect();
+    await disconnectDB();
   }
 };
 

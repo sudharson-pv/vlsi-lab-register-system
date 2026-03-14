@@ -1,6 +1,7 @@
-﻿import mongoose from "mongoose";
+import { getDb } from "./db.js";
 
-let transactionsEnabled = false;
+let transactionsEnabled = true;
+let inTransaction = false;
 
 export const setTransactionsEnabled = (enabled) => {
   transactionsEnabled = Boolean(enabled);
@@ -9,27 +10,26 @@ export const setTransactionsEnabled = (enabled) => {
 export const hasTransactions = () => transactionsEnabled;
 
 export const runAtomic = async (handler) => {
-  if (!transactionsEnabled) {
+  if (!transactionsEnabled || inTransaction) {
     return handler(null);
   }
 
-  const session = await mongoose.startSession();
+  const db = getDb();
+  inTransaction = true;
+  db.exec("BEGIN IMMEDIATE;");
 
   try {
-    let result;
-
-    await session.withTransaction(
-      async () => {
-        result = await handler(session);
-      },
-      {
-        readConcern: { level: "snapshot" },
-        writeConcern: { w: "majority" },
-      },
-    );
-
+    const result = await handler(null);
+    db.exec("COMMIT;");
     return result;
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK;");
+    } catch (_rollbackError) {
+      // Ignore rollback failures and surface the original error.
+    }
+    throw error;
   } finally {
-    await session.endSession();
+    inTransaction = false;
   }
 };

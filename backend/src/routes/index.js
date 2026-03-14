@@ -6,16 +6,23 @@ import creatorRoutes from "./creatorRoutes.js";
 
 const router = Router();
 
-router.use(authRoutes);
-router.use(bookingRoutes);
-router.use(adminRoutes);
-router.use(creatorRoutes);
-
 router.get("/health", (_req, res) => {
   res.json({
     success: true,
     message: "VLSI Lab Register System API is healthy.",
   });
 });
+
+router.get("/", (_req, res) => {
+  res.json({
+    success: true,
+    status: "API running",
+  });
+});
+
+router.use(authRoutes);
+router.use(bookingRoutes);
+router.use(adminRoutes);
+router.use(creatorRoutes);
 
 export default router;
